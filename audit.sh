@@ -97,3 +97,7 @@ audit_file="./audits/audit_$(date +%Y-%m-%d).txt"
 for flagged_user in "${flagged_users[@]}"; do
     echo "$flagged_user" >>  "$audit_file"
 done
+
+
+
+echo "Audit for $today attached" | mutt -s "Daily Audit $today" -a "$audit_file" -- bringuel.alexander@gmail.com
