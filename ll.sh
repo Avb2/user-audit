@@ -1,8 +1,11 @@
-
+# All users
+users=()
 
 # Find users in sudo and wheel groups
 root_users=()
-users=()
+flagged_users=()
+
+
 
 for group_name in "sudo" "wheel"; do
     members=$(getent group "$group_name" | cut -d: -f4 | tr ',' ' ')
@@ -22,17 +25,23 @@ result=$(getent passwd | awk -F: '($3 >= 1000) && ($7 != "/bin/false") && ($7 !=
 
 readarray -t users <<< "$result"
 
-cdate=""
-today=$(date +%s)
+today=$(date +"%b %d %Y")
+today_int=$(date +%s)
 
 
 for user in "${users[@]}"; do
+
+    flagged_user_out="$user"
+
     # Find users whose passwords are locked or dont have passwords
     status=$(passwd -S "$user" | awk '{print $2}')
+    
 
-    if [[ "$status" == "NP" || "$status" == "L" ]]; then
-        echo "$user"
-        continue
+    if [[ "$status" == "NP" ]]; then
+        flagged_user_out+="|No Password Set"
+        
+    elif [[ "$status" == "L" ]]; then
+        flagged_user_out+="|Password Locked"
     fi
 
     # Set the date for the user
@@ -40,16 +49,40 @@ for user in "${users[@]}"; do
 
 
     # Compare the date
-    if (( (today - cdate) / 86400 >= 180 )); then
-        echo "$user"
+    if (( (today_int - cdate) / 86400 >= 180 )); then
+        flagged_user_out+="|Old Password"
     fi
 
+
+    # Check last login
+    login_date=$(lastlog --user "$user" | awk 'NR==2 {print $4, $5, $6, $7, $8}')
+
+    if [[ "$login_date" != *"$today"* ]]; then
+        flagged_user_out+="|No Login Today"
+    fi 
+
+    # Check home dir disk usage
+    home_dir=$(getent passwd "$user" | awk -F: '{print $6}')
+
+    size_kb=$(du -s "$home_dir" | awk '{print $1}')
+    size_mb=$(( size_kb / 1024 ))
+
+    if (( size_mb > 1024 )); then
+        flagged_user_out+="|Disk Space Suspicious"
+    fi
+
+    # Check if flags added
+    if [[ "$flagged_user_out" != "$user" ]]; then
+        flagged_users+=("$flagged_user_out")
+    fi
 done
 
 
 
 
-
+for flagged_user in "${flagged_users[@]}"; do
+    echo "$flagged_user" >> x "audit$today.txt"
+done
 
 
 
