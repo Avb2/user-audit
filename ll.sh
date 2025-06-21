@@ -78,10 +78,10 @@ for user in "${users[@]}"; do
 done
 
 
-
+audit_file="audit_$(date +%Y-%m-%d).txt"
 
 for flagged_user in "${flagged_users[@]}"; do
-    echo "$flagged_user" >> x "audit$today.txt"
+    echo "$flagged_user" >>  "$audit_file"
 done
 
 
