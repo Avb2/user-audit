@@ -1,19 +1,21 @@
+mkdir -p ./audits
+echo > "./audits/audit_$(date +%Y-%m-%d).txt"
+
 # All users
 users=()
 
 # Find users in sudo and wheel groups
-root_users=()
 flagged_users=()
 
 
 
 for group_name in "sudo" "wheel"; do
-    members=$(getent group "$group_name" | cut -d: -f4 | tr ',' ' ')
+    members=$(sudo getent group "$group_name" | cut -d: -f4 | tr ',' ' ')
     for user in $members; do
-        if printf "%s\n" "${root_users[@]}" | grep -q -x -F "$user"; then
+        if printf "%s\n" "${flagged_users[@]}" | grep -q -x -F "$user"; then
             continue
         fi
-        root_users+=("$user")
+           flagged_users+=("$user|Elevated Access")
     done
 done
 
@@ -21,7 +23,7 @@ done
 
 # Set users list and write to list
 
-result=$(getent passwd | awk -F: '($3 >= 1000) && ($7 != "/bin/false") && ($7 != "/usr/sbin/nologin") {print $1}')
+result=$(getent passwd 2>/dev/null | awk -F: '($3 >= 1000) && ($7 != "/bin/false") && ($7 != "/usr/sbin/nologin") {print $1}')
 
 readarray -t users <<< "$result"
 
@@ -29,12 +31,24 @@ today=$(date +"%b %d %Y")
 today_int=$(date +%s)
 
 
+# Flag new users
 for user in "${users[@]}"; do
 
     flagged_user_out="$user"
 
+	home_creation=$(stat -c %W "$home_dir" 2>/dev/null)
+	if [[ "$home_creation" -eq 0 ]]; then
+	    flagged_user_out+="|No Creation Time"
+	else
+	   
+	    if (( (today_int - home_creation) / 86400 < 7 )); then
+	        flagged_user_out+="|New account"
+	    fi
+	fi
+
+
     # Find users whose passwords are locked or dont have passwords
-    status=$(passwd -S "$user" | awk '{print $2}')
+    status=$(passwd -S "$user" 2>/dev/null | awk '{print $2}')
     
 
     if [[ "$status" == "NP" ]]; then
@@ -45,7 +59,7 @@ for user in "${users[@]}"; do
     fi
 
     # Set the date for the user
-    cdate=$(passwd -S "$user" | awk '{print $3}' | date -d - +%s)
+    cdate=$(passwd -S "$user" 2>/dev/null | awk '{print $3}' | date -d - +%s)
 
 
     # Compare the date
@@ -62,9 +76,9 @@ for user in "${users[@]}"; do
     fi 
 
     # Check home dir disk usage
-    home_dir=$(getent passwd "$user" | awk -F: '{print $6}')
+    home_dir=$(getent passwd "$user" 2>/dev/null | awk -F: '{print $6}')
 
-    size_kb=$(du -s "$home_dir" | awk '{print $1}')
+    size_kb=$(sudo du -s "$home_dir" 2>/dev/null | awk '{print $1}')
     size_mb=$(( size_kb / 1024 ))
 
     if (( size_mb > 1024 )); then
@@ -78,11 +92,8 @@ for user in "${users[@]}"; do
 done
 
 
-audit_file="audit_$(date +%Y-%m-%d).txt"
+audit_file="./audits/audit_$(date +%Y-%m-%d).txt"
 
 for flagged_user in "${flagged_users[@]}"; do
     echo "$flagged_user" >>  "$audit_file"
 done
-
-
-
